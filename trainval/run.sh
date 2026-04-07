@@ -1,3 +1,5 @@
+set -euo pipefail
+
 if [[ "${SKIP_PROCESS_INPUT:-0}" != "1" ]]; then
   cd process_input
   sh run.sh

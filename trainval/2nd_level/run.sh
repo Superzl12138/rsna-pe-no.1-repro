@@ -1,3 +1,5 @@
+set -euo pipefail
+
 LOG_DIR="${REPRO_OUTPUT_ROOT:-/data/zilizhu/PE/repro_outputs}/trainval/2nd_level"
 mkdir -p "$LOG_DIR"
 
