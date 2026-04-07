@@ -94,8 +94,10 @@ class seresnext101(nn.Module):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local_rank", type=int, default=-1, help="local_rank for distributed training on gpus")
+    parser.add_argument("--local_rank", "--local-rank", dest="local_rank", type=int, default=-1, help="local_rank for distributed training on gpus")
     args = parser.parse_args()
+    if args.local_rank == -1:
+        args.local_rank = int(os.environ.get("LOCAL_RANK", -1))
     torch.cuda.set_device(args.local_rank)
     device = torch.device("cuda", args.local_rank)
     torch.distributed.init_process_group(backend="nccl")
