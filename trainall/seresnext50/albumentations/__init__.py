@@ -7,4 +7,7 @@ from .core.transforms_interface import *
 from .core.serialization import *
 from .augmentations.transforms import *
 from .augmentations.bbox_utils import *
-from .imgaug.transforms import *
+try:
+    from .imgaug.transforms import *
+except ModuleNotFoundError:
+    pass
