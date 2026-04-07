@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_DIR="${LOG_DIR:-$ROOT_DIR/logs}"
+LOG_DIR="${LOG_DIR:-/data/zilizhu/PE/repro_outputs}"
 mkdir -p "$LOG_DIR"
 
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
