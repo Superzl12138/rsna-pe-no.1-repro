@@ -191,10 +191,12 @@ def main():
                     averaged_model = copy.deepcopy(model)
                 if j>len(generator)-num_polyak:
                     for k in averaged_model.module.state_dict().keys():
-                        averaged_model.module.state_dict()[k].data += model.module.state_dict()[k].data
+                        if averaged_model.module.state_dict()[k].data.is_floating_point():
+                            averaged_model.module.state_dict()[k].data += model.module.state_dict()[k].data
                 if j==len(generator)-1:
                     for k in averaged_model.module.state_dict().keys():
-                        averaged_model.module.state_dict()[k].data /= num_polyak
+                        if averaged_model.module.state_dict()[k].data.is_floating_point():
+                            averaged_model.module.state_dict()[k].data /= num_polyak
                     #print("Polyak averaging end ...")
 
         if args.local_rank == 0:
