@@ -20,6 +20,18 @@ def window(x, WL=50, WW=350):
     x = x / np.max(x)
     return x
 
+def select_annotated_image_list(sorted_image_list, bbox_dict, num_images=4):
+    annotated_image_list = [image_id for image_id in sorted_image_list if image_id in bbox_dict]
+    if len(annotated_image_list) == 0:
+        return []
+    if len(annotated_image_list) >= num_images:
+        selected_idx = np.linspace(0, len(annotated_image_list) - 1, num_images)
+        return [annotated_image_list[int(round(i))] for i in selected_idx]
+    selected_image_list = annotated_image_list.copy()
+    while len(selected_image_list) < num_images:
+        selected_image_list.append(annotated_image_list[-1])
+    return selected_image_list
+
 class BboxDataset(Dataset):
     def __init__(self, series_list):
         self.series_list = series_list
@@ -29,8 +41,9 @@ class BboxDataset(Dataset):
         return index
 
 class BboxCollator(object):
-    def __init__(self, series_list):
+    def __init__(self, series_list, bbox_dict):
         self.series_list = series_list
+        self.bbox_dict = bbox_dict
     def _load_dicom_array(self, f):
         dicom_files = glob.glob(os.path.join(f, '*.dcm'))
         dicoms = [pydicom.dcmread(d) for d in dicom_files]
@@ -40,27 +53,24 @@ class BboxCollator(object):
         sorted_idx = np.argsort(z_pos)
         dicom_files = np.asarray(dicom_files)[sorted_idx]
         dicoms = np.asarray(dicoms)[sorted_idx]
-        selected_idx = [int(0.2*len(dicom_files)), int(0.3*len(dicom_files)), int(0.4*len(dicom_files)), int(0.5*len(dicom_files))]
+        image_list = [os.path.splitext(os.path.basename(d))[0] for d in dicom_files]
+        selected_image_list = select_annotated_image_list(image_list, self.bbox_dict)
+        if len(selected_image_list) == 0:
+            raise RuntimeError(f'No annotated images found for {f}')
+        image_to_idx = {image_id: i for i, image_id in enumerate(image_list)}
+        selected_idx = [image_to_idx[image_id] for image_id in selected_image_list]
         selected_dicom_files = dicom_files[selected_idx]
         selected_dicoms = dicoms[selected_idx]
         dicoms = np.asarray([d.pixel_array.astype(np.float32) for d in selected_dicoms])
         dicoms = dicoms * M
         dicoms = dicoms + B
         dicoms = window(dicoms, WL=100, WW=700)
-        return dicoms, dicom_files, selected_dicom_files
+        return dicoms, image_list, selected_image_list
     def __call__(self, batch_idx):
         study_id = self.series_list[batch_idx[0]].split('_')[0]
         series_id = self.series_list[batch_idx[0]].split('_')[1]
         series_dir = '../../../input/train/' + study_id + '/'+ series_id
-        dicoms, dicom_files, selected_dicom_files = self._load_dicom_array(series_dir)
-        image_list = []
-        for i in range(len(dicom_files)):
-            name = dicom_files[i][-16:-4]
-            image_list.append(name)
-        selected_image_list = []
-        for i in range(len(selected_dicom_files)):
-            name = selected_dicom_files[i][-16:-4]
-            selected_image_list.append(name)
+        dicoms, image_list, selected_image_list = self._load_dicom_array(series_dir)
         x = np.zeros((4, 3, dicoms.shape[1], dicoms.shape[2]), dtype=np.float32)
         for i in range(4):
             x[i,0] = dicoms[i]
@@ -109,7 +119,7 @@ def main():
 
     # iterator for validation
     datagen = BboxDataset(series_list=series_list)
-    collate_fn = BboxCollator(series_list=series_list)
+    collate_fn = BboxCollator(series_list=series_list, bbox_dict=bbox_dict)
     generator = DataLoader(dataset=datagen, collate_fn=collate_fn, batch_size=1, shuffle=False, num_workers=20, pin_memory=True)
     total_steps = len(generator)
     for i, (images, image_list, selected_image_list, series_id) in tqdm(enumerate(generator), total=total_steps):

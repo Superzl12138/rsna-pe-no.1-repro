@@ -39,6 +39,18 @@ def window(x, WL=50, WW=350):
     x = x / np.max(x)
     return x
 
+def select_annotated_image_list(sorted_image_list, bbox_dict, num_images=4):
+    annotated_image_list = [image_id for image_id in sorted_image_list if image_id in bbox_dict]
+    if len(annotated_image_list) == 0:
+        return []
+    if len(annotated_image_list) >= num_images:
+        selected_idx = np.linspace(0, len(annotated_image_list) - 1, num_images)
+        return [annotated_image_list[int(round(i))] for i in selected_idx]
+    selected_image_list = annotated_image_list.copy()
+    while len(selected_image_list) < num_images:
+        selected_image_list.append(annotated_image_list[-1])
+    return selected_image_list
+
 class PEDataset(Dataset):
     def __init__(self, image_dict, bbox_dict, image_list, target_size):
         self.image_dict=image_dict
@@ -113,12 +125,8 @@ def main():
     image_list_valid = []
     for series_id in series_list_valid:
         sorted_image_list = series_dict[series_id]['sorted_image_list']
-        num_image = len(sorted_image_list)
-        selected_idx = [int(0.2*num_image), int(0.3*num_image), int(0.4*num_image), int(0.5*num_image)]
-        image_list_valid.append(sorted_image_list[selected_idx[0]])
-        image_list_valid.append(sorted_image_list[selected_idx[1]])
-        image_list_valid.append(sorted_image_list[selected_idx[2]])
-        image_list_valid.append(sorted_image_list[selected_idx[3]])
+        selected_image_list = select_annotated_image_list(sorted_image_list, bbox_dict)
+        image_list_valid += selected_image_list
     print(len(image_list_valid))
 
     # hyperparameters
