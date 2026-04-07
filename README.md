@@ -80,7 +80,7 @@ export NPROC_PER_NODE=4
 export SECOND_LEVEL_GPU=0
 ```
 
-### 改总日志目录
+### 改总日志目录（默认：`/data/zilizhu/PE/repro_outputs`）
 
 ```bash
 export LOG_DIR=/path/to/repro/logs
@@ -119,6 +119,19 @@ export LOG_DIR=/path/to/repro/logs
 ## 日志
 
 - 各阶段原始日志仍然会写入各自子目录下的 `*.txt`
-- 后台启动脚本会额外生成一个总日志：
-  - `logs/trainval_时间戳.log`
-  - `logs/trainall_时间戳.log`
+- 后台启动脚本会额外生成一个总日志（默认写入 `/data/zilizhu/PE/repro_outputs`）：
+  - `trainval_时间戳.log`
+  - `trainall_时间戳.log`
+
+## 复用既有 pickle（跳过 process_input）
+
+如果你已经生成过 `series_dict.pickle/image_dict.pickle/…` 等文件（例如位于 `/home/zilizhu/CAD_PE-main/process_input/split3`），可以直接复用，避免重新扫描 DICOM：
+
+```bash
+cd /path/to/repro
+export SKIP_PROCESS_INPUT=1
+export EXISTING_PICKLE_DIR=/home/zilizhu/CAD_PE-main/process_input/split3
+bash start_trainval_bg.sh
+```
+
+脚本会把上述目录中的必需文件以软链接的形式放到 `trainval/process_input/split2/`，后续阶段将直接读取。
