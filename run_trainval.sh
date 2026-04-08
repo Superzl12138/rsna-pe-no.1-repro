@@ -13,6 +13,10 @@ REQUIRED_FILES=(
   "image_list_train.pickle"
   "image_list_valid.pickle"
 )
+BBOX_REQUIRED_FILES=(
+  "$ROOT_DIR/trainval/lung_localization/split2/bbox_dict_train.pickle"
+  "$ROOT_DIR/trainval/lung_localization/split2/bbox_dict_valid.pickle"
+)
 
 # 数据软链接
 bash "$ROOT_DIR/setup_data_links.sh"
@@ -38,6 +42,16 @@ if [[ "${SKIP_PROCESS_INPUT:-0}" == "1" ]]; then
 fi
 
 python3 "$ROOT_DIR/prepare_trainval_subset.py"
+
+if [[ "${SKIP_LUNG_LOCALIZATION:-0}" == "1" ]]; then
+  for f in "${BBOX_REQUIRED_FILES[@]}"; do
+    if [[ ! -e "$f" ]]; then
+      echo "[ERROR] 缺少 $f。"
+      echo "当前设置了 SKIP_LUNG_LOCALIZATION=1，但后续图像级模型需要已有 bbox_dict 产物。"
+      exit 1
+    fi
+  done
+fi
 
 cd "$ROOT_DIR/trainval"
 bash run.sh
