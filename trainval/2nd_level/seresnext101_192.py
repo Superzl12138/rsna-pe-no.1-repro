@@ -13,6 +13,7 @@ from torch.utils.data import Dataset, DataLoader
 import torch
 from apex import amp
 from sklearn.metrics import roc_auc_score, log_loss
+from metrics import calculate_weighted_metrics, print_validation_metrics
 
 # https://www.kaggle.com/bminixhofer/a-validation-framework-impact-of-the-random-seed
 class Attention(nn.Module):
@@ -335,6 +336,30 @@ for ep in range(num_epoch):
     pred_prob_list = []
     gt_list = []
     loss_weight_list = []
+    valid_predictions = {
+        'negative_exam_for_pe': [],
+        'indeterminate': [],
+        'chronic_pe': [],
+        'acute_and_chronic_pe': [],
+        'central_pe': [],
+        'leftsided_pe': [],
+        'rightsided_pe': [],
+        'rv_lv_ratio_gte_1': [],
+        'rv_lv_ratio_lt_1': [],
+        'pe_present_on_image': [],
+    }
+    valid_labels = {
+        'negative_exam_for_pe': [],
+        'indeterminate': [],
+        'chronic_pe': [],
+        'acute_and_chronic_pe': [],
+        'central_pe': [],
+        'leftsided_pe': [],
+        'rightsided_pe': [],
+        'rv_lv_ratio_gte_1': [],
+        'rv_lv_ratio_lt_1': [],
+        'pe_present_on_image': [],
+    }
 
     losses_pe = AverageMeter()
     losses_npe = AverageMeter()
@@ -444,6 +469,24 @@ for ep in range(num_epoch):
             pred_prob_gte = np.squeeze(logits_gte.sigmoid().cpu().data.numpy())
             pred_prob_lt = np.squeeze(logits_lt.sigmoid().cpu().data.numpy())
             for n in range(len(series_list)):
+                valid_predictions['negative_exam_for_pe'].append(float(pred_prob_npe[n]))
+                valid_predictions['indeterminate'].append(float(pred_prob_idt[n]))
+                valid_predictions['chronic_pe'].append(float(pred_prob_chronic[n]))
+                valid_predictions['acute_and_chronic_pe'].append(float(pred_prob_acute_and_chronic[n]))
+                valid_predictions['central_pe'].append(float(pred_prob_cpe[n]))
+                valid_predictions['leftsided_pe'].append(float(pred_prob_lpe[n]))
+                valid_predictions['rightsided_pe'].append(float(pred_prob_rpe[n]))
+                valid_predictions['rv_lv_ratio_gte_1'].append(float(pred_prob_gte[n]))
+                valid_predictions['rv_lv_ratio_lt_1'].append(float(pred_prob_lt[n]))
+                valid_labels['negative_exam_for_pe'].append(float(series_dict[series_list[n]]['negative_exam_for_pe']))
+                valid_labels['indeterminate'].append(float(series_dict[series_list[n]]['indeterminate']))
+                valid_labels['chronic_pe'].append(float(series_dict[series_list[n]]['chronic_pe']))
+                valid_labels['acute_and_chronic_pe'].append(float(series_dict[series_list[n]]['acute_and_chronic_pe']))
+                valid_labels['central_pe'].append(float(series_dict[series_list[n]]['central_pe']))
+                valid_labels['leftsided_pe'].append(float(series_dict[series_list[n]]['leftsided_pe']))
+                valid_labels['rightsided_pe'].append(float(series_dict[series_list[n]]['rightsided_pe']))
+                valid_labels['rv_lv_ratio_gte_1'].append(float(series_dict[series_list[n]]['rv_lv_ratio_gte_1']))
+                valid_labels['rv_lv_ratio_lt_1'].append(float(series_dict[series_list[n]]['rv_lv_ratio_lt_1']))
                 pred_prob_list.append(pred_prob_npe[n])
                 pred_prob_list.append(pred_prob_idt[n])
                 pred_prob_list.append(pred_prob_chronic[n])
@@ -455,9 +498,15 @@ for ep in range(num_epoch):
                 pred_prob_list.append(pred_prob_lt[n])
                 num_image = len(series_dict[series_list[n]]['sorted_image_list'])
                 if num_image>seq_len:
-                    pred_prob_list += list(np.squeeze(cv2.resize(pred_prob_pe[n, :], (1, num_image), interpolation = cv2.INTER_LINEAR)))
+                    image_level_pred = list(np.squeeze(cv2.resize(pred_prob_pe[n, :], (1, num_image), interpolation = cv2.INTER_LINEAR)))
                 else:
-                    pred_prob_list += list(pred_prob_pe[n, :num_image])
+                    image_level_pred = list(pred_prob_pe[n, :num_image])
+                pred_prob_list += image_level_pred
+                valid_predictions['pe_present_on_image'] += [float(v) for v in image_level_pred]
+                valid_labels['pe_present_on_image'] += [
+                    float(image_dict[image_id]['pe_present_on_image'])
+                    for image_id in series_dict[series_list[n]]['sorted_image_list']
+                ]
 
     pred_prob_list = torch.tensor(pred_prob_list, dtype=torch.float32)
     gt_list = torch.tensor(gt_list, dtype=torch.float32)
@@ -465,10 +514,16 @@ for ep in range(num_epoch):
     print(len(pred_prob_list))
     kaggle_loss = torch.nn.BCELoss(reduction='none')(pred_prob_list, gt_list)
     kaggle_loss = (kaggle_loss*loss_weight_list).sum() / loss_weight_list.sum()
+    all_metrics, weighted_metrics, overall_pe_metrics = calculate_weighted_metrics(
+        valid_predictions,
+        valid_labels,
+        loss_weight_dict,
+    )
 
     print()
     print('epoch: {}, valid_loss_pe: {}, valid_loss_npe: {}, valid_loss_idt: {}, valid_loss_lpe: {}, valid_loss_rpe: {}, valid_loss_cpe: {}, valid_loss_gte: {}, valid_loss_lt: {}, valid_loss_chronic: {}, valid_loss_acute_and_chronic: {}, kaggle_loss: {}'.format(ep, losses_pe.avg, losses_npe.avg, losses_idt.avg, losses_lpe.avg, losses_rpe.avg, losses_cpe.avg, losses_gte.avg, losses_lt.avg, losses_chronic.avg, losses_acute_and_chronic.avg, kaggle_loss), flush=True)
     print()
+    print_validation_metrics(ep, kaggle_loss, all_metrics, weighted_metrics, overall_pe_metrics)
 
 
 out_dir = 'predictions/'
