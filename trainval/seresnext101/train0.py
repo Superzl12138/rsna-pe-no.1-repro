@@ -122,7 +122,7 @@ def main():
 
     # hyperparameters
     learning_rate = 0.0004
-    batch_size = 30
+    batch_size = int(os.environ.get('TRAIN_BATCH_SIZE_SERESNEXT101', 12))
     image_size = 576
     num_epoch = 1
 

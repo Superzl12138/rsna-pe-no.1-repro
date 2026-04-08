@@ -37,5 +37,7 @@ if [[ "${SKIP_PROCESS_INPUT:-0}" == "1" ]]; then
   done
 fi
 
+python3 "$ROOT_DIR/prepare_trainval_subset.py"
+
 cd "$ROOT_DIR/trainval"
 bash run.sh

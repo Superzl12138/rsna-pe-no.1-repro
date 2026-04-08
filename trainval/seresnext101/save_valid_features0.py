@@ -104,7 +104,7 @@ def main():
     print(len(image_list_valid), len(image_dict), len(bbox_dict_valid))
 
     # hyperparameters
-    batch_size = 96
+    batch_size = int(os.environ.get('EVAL_BATCH_SIZE_SERESNEXT101', 28))
     image_size = 576
     criterion = nn.BCEWithLogitsLoss().cuda()
 
