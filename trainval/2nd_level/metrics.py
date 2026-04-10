@@ -1,4 +1,5 @@
 import numpy as np
+import os
 
 
 def _binary_confusion_counts(y_true, y_pred_binary):
@@ -72,6 +73,7 @@ def calculate_binary_metrics(y_true, y_pred, threshold=0.5):
     youden_index = sensitivity + specificity - 1
 
     return {
+        "threshold": threshold,
         "accuracy": accuracy,
         "precision": precision,
         "recall": recall,
@@ -93,14 +95,40 @@ def calculate_binary_metrics(y_true, y_pred, threshold=0.5):
     }
 
 
-def calculate_weighted_metrics(predictions_dict, labels_dict, loss_weight_dict, threshold=0.5):
+def get_label_thresholds(default_threshold=0.5):
+    label_thresholds = {}
+    for label_name in [
+        "negative_exam_for_pe",
+        "indeterminate",
+        "chronic_pe",
+        "acute_and_chronic_pe",
+        "central_pe",
+        "leftsided_pe",
+        "rightsided_pe",
+        "rv_lv_ratio_gte_1",
+        "rv_lv_ratio_lt_1",
+        "pe_present_on_image",
+    ]:
+        env_key = f"{label_name.upper()}_THRESHOLD"
+        env_key = env_key.replace("-", "_")
+        label_thresholds[label_name] = float(os.environ.get(env_key, default_threshold))
+    return label_thresholds
+
+
+def calculate_weighted_metrics(predictions_dict, labels_dict, loss_weight_dict, threshold=0.5, label_thresholds=None):
     all_metrics = {}
     weighted_metrics = {}
+    if label_thresholds is None:
+        label_thresholds = get_label_thresholds(default_threshold=threshold)
     for label_name, y_pred in predictions_dict.items():
         y_true = labels_dict.get(label_name, [])
         if len(y_pred) == 0 or len(y_true) == 0:
             continue
-        all_metrics[label_name] = calculate_binary_metrics(y_true, y_pred, threshold=threshold)
+        all_metrics[label_name] = calculate_binary_metrics(
+            y_true,
+            y_pred,
+            threshold=label_thresholds.get(label_name, threshold),
+        )
 
     weighted_keys = ["auc_roc", "auc_pr", "f1_score", "f2_score", "sensitivity", "specificity"]
     if len(all_metrics) > 0:
@@ -176,7 +204,7 @@ def print_validation_metrics(epoch, kaggle_loss, all_metrics, weighted_metrics, 
             f"{label_name}: auc_roc={metrics['auc_roc']:.6f}, auc_pr={metrics['auc_pr']:.6f}, "
             f"f1={metrics['f1_score']:.6f}, f2={metrics['f2_score']:.6f}, "
             f"sensitivity={metrics['sensitivity']:.6f}, specificity={metrics['specificity']:.6f}, "
-            f"ppv={metrics['ppv']:.6f}, npv={metrics['npv']:.6f}"
+            f"ppv={metrics['ppv']:.6f}, npv={metrics['npv']:.6f}, threshold={metrics['threshold']:.3f}"
         )
     print("=" * 60)
     print()
