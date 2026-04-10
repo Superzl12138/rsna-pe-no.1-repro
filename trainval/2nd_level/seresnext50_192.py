@@ -14,6 +14,7 @@ import torch
 from apex import amp
 from sklearn.metrics import roc_auc_score, log_loss
 from metrics import calculate_weighted_metrics, print_validation_metrics
+from swanlab_utils import SwanLabLogger
 
 # https://www.kaggle.com/bminixhofer/a-validation-framework-impact-of-the-random-seed
 class Attention(nn.Module):
@@ -225,6 +226,18 @@ scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.8)
 model, optimizer = amp.initialize(model, optimizer, opt_level="O1",verbosity=0)
 criterion = nn.BCEWithLogitsLoss(reduction='none').cuda()
 criterion1 = nn.BCEWithLogitsLoss().cuda()
+swanlab_logger = SwanLabLogger(
+    "seresnext50_192",
+    config={
+        "seq_len": seq_len,
+        "feature_size": feature_size,
+        "lstm_size": lstm_size,
+        "learning_rate": learning_rate,
+        "batch_size": batch_size,
+        "num_epoch": num_epoch,
+        "model_name": "seresnext50_192",
+    },
+)
 
 
 # training
@@ -331,6 +344,18 @@ for ep in range(num_epoch):
 
     print()
     print('epoch: {}, train_loss_pe: {}, train_loss_npe: {}, train_loss_idt: {}, train_loss_lpe: {}, train_loss_rpe: {}, train_loss_cpe: {}, train_loss_gte: {}, train_loss_lt: {}, train_loss_chronic: {}, train_loss_acute_and_chronic: {}'.format(ep, losses_pe.avg, losses_npe.avg, losses_idt.avg, losses_lpe.avg, losses_rpe.avg, losses_cpe.avg, losses_gte.avg, losses_lt.avg, losses_chronic.avg, losses_acute_and_chronic.avg), flush=True)
+    train_loss_metrics = {
+        "loss_pe": losses_pe.avg,
+        "loss_npe": losses_npe.avg,
+        "loss_idt": losses_idt.avg,
+        "loss_lpe": losses_lpe.avg,
+        "loss_rpe": losses_rpe.avg,
+        "loss_cpe": losses_cpe.avg,
+        "loss_gte": losses_gte.avg,
+        "loss_lt": losses_lt.avg,
+        "loss_chronic": losses_chronic.avg,
+        "loss_acute_and_chronic": losses_acute_and_chronic.avg,
+    }
 
     # valid
     pred_prob_list = []
@@ -524,6 +549,28 @@ for ep in range(num_epoch):
     print('epoch: {}, valid_loss_pe: {}, valid_loss_npe: {}, valid_loss_idt: {}, valid_loss_lpe: {}, valid_loss_rpe: {}, valid_loss_cpe: {}, valid_loss_gte: {}, valid_loss_lt: {}, valid_loss_chronic: {}, valid_loss_acute_and_chronic: {}, kaggle_loss: {}'.format(ep, losses_pe.avg, losses_npe.avg, losses_idt.avg, losses_lpe.avg, losses_rpe.avg, losses_cpe.avg, losses_gte.avg, losses_lt.avg, losses_chronic.avg, losses_acute_and_chronic.avg, kaggle_loss), flush=True)
     print()
     print_validation_metrics(ep, kaggle_loss, all_metrics, weighted_metrics, overall_pe_metrics)
+    valid_loss_metrics = {
+        "loss_pe": losses_pe.avg,
+        "loss_npe": losses_npe.avg,
+        "loss_idt": losses_idt.avg,
+        "loss_lpe": losses_lpe.avg,
+        "loss_rpe": losses_rpe.avg,
+        "loss_cpe": losses_cpe.avg,
+        "loss_gte": losses_gte.avg,
+        "loss_lt": losses_lt.avg,
+        "loss_chronic": losses_chronic.avg,
+        "loss_acute_and_chronic": losses_acute_and_chronic.avg,
+    }
+    swanlab_logger.log_epoch(
+        epoch=ep,
+        train_losses=train_loss_metrics,
+        valid_losses=valid_loss_metrics,
+        kaggle_loss=kaggle_loss,
+        weighted_metrics=weighted_metrics,
+        overall_metrics=overall_pe_metrics,
+        label_metrics=all_metrics,
+        lr=optimizer.param_groups[0]["lr"],
+    )
 
 
 out_dir = 'predictions/'
@@ -537,3 +584,4 @@ out_dir = 'weights/'
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
 torch.save(model.state_dict(), out_dir+'seresnext50_192')
+swanlab_logger.finish()
