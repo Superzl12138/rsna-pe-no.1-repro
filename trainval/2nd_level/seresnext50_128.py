@@ -14,7 +14,7 @@ import torch
 from apex import amp
 from sklearn.metrics import roc_auc_score, log_loss
 from metrics import calculate_weighted_metrics, print_validation_metrics
-from sampling import build_oversampled_series_list, print_oversampling_summary
+from sampling import build_resampled_series_list, print_sampling_summary
 from swanlab_utils import SwanLabLogger
 
 # https://www.kaggle.com/bminixhofer/a-validation-framework-impact-of-the-random-seed
@@ -169,12 +169,12 @@ torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 torch.backends.cudnn.deterministic = True
 
-series_list_train, oversampling_summary = build_oversampled_series_list(
+series_list_train, sampling_summary = build_resampled_series_list(
     series_list=series_list_train,
     series_dict=series_dict,
     seed=seed,
 )
-print_oversampling_summary(oversampling_summary)
+print_sampling_summary(sampling_summary)
 
 # hyperparameters
 seq_len = 128
@@ -244,11 +244,13 @@ swanlab_logger = SwanLabLogger(
         "batch_size": batch_size,
         "num_epoch": num_epoch,
         "model_name": "seresnext50_128",
-        "original_train_series_count": oversampling_summary["before"]["total"],
-        "effective_train_series_count": oversampling_summary["after"]["total"],
-        "oversampling_enabled": oversampling_summary["enabled"],
-        "oversample_chronic_pe_factor": oversampling_summary["chronic_factor"],
-        "oversample_acute_and_chronic_pe_factor": oversampling_summary["acute_and_chronic_factor"],
+        "original_train_series_count": sampling_summary["before"]["total"],
+        "effective_train_series_count": sampling_summary["after"]["total"],
+        "undersampling_enabled": sampling_summary["undersampling_enabled"],
+        "undersample_other_series_ratio": sampling_summary["keep_other_ratio"],
+        "oversampling_enabled": sampling_summary["oversampling_enabled"],
+        "oversample_chronic_pe_factor": sampling_summary["chronic_factor"],
+        "oversample_acute_and_chronic_pe_factor": sampling_summary["acute_and_chronic_factor"],
     },
 )
 
