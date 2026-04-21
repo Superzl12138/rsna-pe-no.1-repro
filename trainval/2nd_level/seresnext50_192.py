@@ -15,6 +15,11 @@ from apex import amp
 from sklearn.metrics import roc_auc_score, log_loss
 from metrics import calculate_weighted_metrics, print_validation_metrics
 from sampling import build_resampled_series_list, print_sampling_summary
+from relation_utils import (
+    RelationAwareSubtypeHead,
+    get_relation_head_config,
+    print_relation_head_config,
+)
 from swanlab_utils import SwanLabLogger
 
 # https://www.kaggle.com/bminixhofer/a-validation-framework-impact-of-the-random-seed
@@ -175,6 +180,8 @@ series_list_train, sampling_summary = build_resampled_series_list(
     seed=seed,
 )
 print_sampling_summary(sampling_summary)
+relation_head_config = get_relation_head_config()
+print_relation_head_config(relation_head_config)
 
 # hyperparameters
 seq_len = 192
@@ -194,8 +201,9 @@ class SpatialDropout(nn.Dropout2d):
         return x
 
 class PENet(nn.Module):
-    def __init__(self, input_len, lstm_size):
+    def __init__(self, input_len, lstm_size, relation_head_config):
         super().__init__()
+        self.relation_head_enabled = relation_head_config["enabled"]
         self.lstm1 = nn.GRU(input_len, lstm_size, bidirectional=True, batch_first=True)
         self.last_linear_pe = nn.Linear(lstm_size*2, 1)
         self.last_linear_npe = nn.Linear(lstm_size*4, 1)
@@ -208,6 +216,12 @@ class PENet(nn.Module):
         self.last_linear_chronic = nn.Linear(lstm_size*4, 1)
         self.last_linear_acute_and_chronic = nn.Linear(lstm_size*4, 1)
         self.attention = Attention(lstm_size*2, seq_len)
+        if self.relation_head_enabled:
+            self.relation_subtype_head = RelationAwareSubtypeHead(
+                feature_dim=lstm_size * 4,
+                context_dim=7,
+                hidden_dim=relation_head_config["hidden_dim"],
+            )
     def forward(self, x, mask):
         #x = SpatialDropout(0.5)(x)
         h_lstm1, _ = self.lstm1(x)
@@ -223,11 +237,29 @@ class PENet(nn.Module):
         logits_cpe = self.last_linear_cpe(conc)
         logits_gte = self.last_linear_gte(conc)
         logits_lt = self.last_linear_lt(conc)
-        logits_chronic = self.last_linear_chronic(conc)
-        logits_acute_and_chronic = self.last_linear_acute_and_chronic(conc)
+        if self.relation_head_enabled:
+            context_logits = torch.cat(
+                [
+                    logits_npe,
+                    logits_idt,
+                    logits_lpe,
+                    logits_rpe,
+                    logits_cpe,
+                    logits_gte,
+                    logits_lt,
+                ],
+                dim=1,
+            )
+            logits_chronic, logits_acute_and_chronic = self.relation_subtype_head(
+                conc,
+                context_logits,
+            )
+        else:
+            logits_chronic = self.last_linear_chronic(conc)
+            logits_acute_and_chronic = self.last_linear_acute_and_chronic(conc)
         return logits_pe, logits_npe, logits_idt, logits_lpe, logits_rpe, logits_cpe, logits_gte, logits_lt, logits_chronic, logits_acute_and_chronic
 
-model = PENet(input_len=feature_size, lstm_size=lstm_size)
+model = PENet(input_len=feature_size, lstm_size=lstm_size, relation_head_config=relation_head_config)
 model = model.cuda()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.8)
@@ -251,6 +283,8 @@ swanlab_logger = SwanLabLogger(
         "oversampling_enabled": sampling_summary["oversampling_enabled"],
         "oversample_chronic_pe_factor": sampling_summary["chronic_factor"],
         "oversample_acute_and_chronic_pe_factor": sampling_summary["acute_and_chronic_factor"],
+        "relation_head_enabled": relation_head_config["enabled"],
+        "relation_head_hidden_dim": relation_head_config["hidden_dim"],
     },
 )
 
