@@ -16,7 +16,7 @@ from sklearn.metrics import roc_auc_score, log_loss
 from metrics import calculate_weighted_metrics, print_validation_metrics
 from sampling import build_resampled_series_list, print_sampling_summary
 from relation_utils import (
-    RelationAwareSubtypeHead,
+    build_relation_subtype_head,
     get_relation_head_config,
     print_relation_head_config,
 )
@@ -217,10 +217,10 @@ class PENet(nn.Module):
         self.last_linear_acute_and_chronic = nn.Linear(lstm_size*4, 1)
         self.attention = Attention(lstm_size*2, seq_len)
         if self.relation_head_enabled:
-            self.relation_subtype_head = RelationAwareSubtypeHead(
+            self.relation_subtype_head = build_relation_subtype_head(
                 feature_dim=lstm_size * 4,
                 context_dim=7,
-                hidden_dim=relation_head_config["hidden_dim"],
+                config=relation_head_config,
             )
     def forward(self, x, mask):
         #x = SpatialDropout(0.5)(x)
@@ -237,6 +237,8 @@ class PENet(nn.Module):
         logits_cpe = self.last_linear_cpe(conc)
         logits_gte = self.last_linear_gte(conc)
         logits_lt = self.last_linear_lt(conc)
+        base_logits_chronic = self.last_linear_chronic(conc)
+        base_logits_acute_and_chronic = self.last_linear_acute_and_chronic(conc)
         if self.relation_head_enabled:
             context_logits = torch.cat(
                 [
@@ -250,13 +252,17 @@ class PENet(nn.Module):
                 ],
                 dim=1,
             )
+            all_exam_logits = torch.cat(
+                [context_logits, base_logits_chronic, base_logits_acute_and_chronic],
+                dim=1,
+            )
             logits_chronic, logits_acute_and_chronic = self.relation_subtype_head(
                 conc,
-                context_logits,
+                all_exam_logits,
             )
         else:
-            logits_chronic = self.last_linear_chronic(conc)
-            logits_acute_and_chronic = self.last_linear_acute_and_chronic(conc)
+            logits_chronic = base_logits_chronic
+            logits_acute_and_chronic = base_logits_acute_and_chronic
         return logits_pe, logits_npe, logits_idt, logits_lpe, logits_rpe, logits_cpe, logits_gte, logits_lt, logits_chronic, logits_acute_and_chronic
 
 model = PENet(input_len=feature_size, lstm_size=lstm_size, relation_head_config=relation_head_config)
@@ -284,7 +290,9 @@ swanlab_logger = SwanLabLogger(
         "oversample_chronic_pe_factor": sampling_summary["chronic_factor"],
         "oversample_acute_and_chronic_pe_factor": sampling_summary["acute_and_chronic_factor"],
         "relation_head_enabled": relation_head_config["enabled"],
+        "relation_head_type": relation_head_config["relation_type"],
         "relation_head_hidden_dim": relation_head_config["hidden_dim"],
+        "relation_graph_steps": relation_head_config["num_steps"],
     },
 )
 
