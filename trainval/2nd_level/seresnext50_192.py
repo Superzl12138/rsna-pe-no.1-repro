@@ -14,6 +14,12 @@ import torch
 from apex import amp
 from sklearn.metrics import roc_auc_score, log_loss
 from metrics import calculate_weighted_metrics, print_validation_metrics
+from prediction_export_utils import (
+    append_exam_sample_metadata,
+    append_image_sample_metadata,
+    export_validation_predictions_csv,
+    init_validation_sample_metadata,
+)
 from sampling import build_resampled_series_list, print_sampling_summary
 from relation_utils import (
     build_relation_subtype_head,
@@ -442,6 +448,7 @@ for ep in range(num_epoch):
         'rv_lv_ratio_lt_1': [],
         'pe_present_on_image': [],
     }
+    valid_sample_metadata = init_validation_sample_metadata()
 
     losses_pe = AverageMeter()
     losses_npe = AverageMeter()
@@ -462,6 +469,7 @@ for ep in range(num_epoch):
                 end = len(valid_generator.dataset)
 
             for n in range(len(series_list)):
+                append_exam_sample_metadata(valid_sample_metadata, series_list[n])
                 gt_list.append(series_dict[series_list[n]]['negative_exam_for_pe'])
                 loss_weight_list.append(loss_weight_dict['negative_exam_for_pe'])
                 gt_list.append(series_dict[series_list[n]]['indeterminate'])
@@ -584,10 +592,12 @@ for ep in range(num_epoch):
                 else:
                     image_level_pred = list(pred_prob_pe[n, :num_image])
                 pred_prob_list += image_level_pred
+                image_ids = series_dict[series_list[n]]['sorted_image_list']
+                append_image_sample_metadata(valid_sample_metadata, series_list[n], image_ids)
                 valid_predictions['pe_present_on_image'] += [float(v) for v in image_level_pred]
                 valid_labels['pe_present_on_image'] += [
                     float(image_dict[image_id]['pe_present_on_image'])
-                    for image_id in series_dict[series_list[n]]['sorted_image_list']
+                    for image_id in image_ids
                 ]
 
     pred_prob_list = torch.tensor(pred_prob_list, dtype=torch.float32)
@@ -606,6 +616,16 @@ for ep in range(num_epoch):
     print('epoch: {}, valid_loss_pe: {}, valid_loss_npe: {}, valid_loss_idt: {}, valid_loss_lpe: {}, valid_loss_rpe: {}, valid_loss_cpe: {}, valid_loss_gte: {}, valid_loss_lt: {}, valid_loss_chronic: {}, valid_loss_acute_and_chronic: {}, kaggle_loss: {}'.format(ep, losses_pe.avg, losses_npe.avg, losses_idt.avg, losses_lpe.avg, losses_rpe.avg, losses_cpe.avg, losses_gte.avg, losses_lt.avg, losses_chronic.avg, losses_acute_and_chronic.avg, kaggle_loss), flush=True)
     print()
     print_validation_metrics(ep, kaggle_loss, all_metrics, weighted_metrics, overall_pe_metrics)
+    export_validation_predictions_csv(
+        output_dir='predictions/valid_predictions',
+        experiment_name=os.environ.get('EXPERIMENT_NAME', ''),
+        model_name='seresnext50_192',
+        epoch=ep,
+        num_epoch=num_epoch,
+        predictions_dict=valid_predictions,
+        labels_dict=valid_labels,
+        sample_metadata=valid_sample_metadata,
+    )
     valid_loss_metrics = {
         "loss_pe": losses_pe.avg,
         "loss_npe": losses_npe.avg,
