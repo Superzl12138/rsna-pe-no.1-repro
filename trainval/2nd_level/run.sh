@@ -7,11 +7,13 @@ mkdir -p "$LOG_DIR"
 bash "$ROOT_DIR/prepare_output_links.sh" "$SCRIPT_DIR" "$LOG_DIR" weights predictions
 
 START_STEP="${SECOND_LEVEL_START_STEP:-seresnext50_128}"
+END_STEP="${SECOND_LEVEL_END_STEP:-prediction_correction}"
 
 should_run() {
   local step="$1"
   local order=0
   local start_order=0
+  local end_order=0
   case "$step" in
     seresnext50_128) order=1 ;;
     seresnext101_128) order=2 ;;
@@ -28,7 +30,15 @@ should_run() {
     prediction_correction) start_order=5 ;;
     *) echo "[ERROR] Unknown SECOND_LEVEL_START_STEP: $START_STEP"; exit 1 ;;
   esac
-  [[ $order -ge $start_order ]]
+  case "$END_STEP" in
+    seresnext50_128) end_order=1 ;;
+    seresnext101_128) end_order=2 ;;
+    seresnext50_192) end_order=3 ;;
+    seresnext101_192) end_order=4 ;;
+    prediction_correction) end_order=5 ;;
+    *) echo "[ERROR] Unknown SECOND_LEVEL_END_STEP: $END_STEP"; exit 1 ;;
+  esac
+  [[ $order -ge $start_order && $order -le $end_order ]]
 }
 
 if should_run seresnext50_128; then
