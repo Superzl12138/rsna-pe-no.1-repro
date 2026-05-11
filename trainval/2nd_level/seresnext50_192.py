@@ -210,6 +210,7 @@ class PENet(nn.Module):
     def __init__(self, input_len, lstm_size, relation_head_config):
         super().__init__()
         self.relation_head_enabled = relation_head_config["enabled"]
+        self.relation_head_type = relation_head_config["relation_type"]
         self.lstm1 = nn.GRU(input_len, lstm_size, bidirectional=True, batch_first=True)
         self.last_linear_pe = nn.Linear(lstm_size*2, 1)
         self.last_linear_npe = nn.Linear(lstm_size*4, 1)
@@ -262,9 +263,10 @@ class PENet(nn.Module):
                 [context_logits, base_logits_chronic, base_logits_acute_and_chronic],
                 dim=1,
             )
+            relation_logits = all_exam_logits if self.relation_head_type == "graph" else context_logits
             logits_chronic, logits_acute_and_chronic = self.relation_subtype_head(
                 conc,
-                all_exam_logits,
+                relation_logits,
             )
         else:
             logits_chronic = base_logits_chronic
