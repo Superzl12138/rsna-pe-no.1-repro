@@ -20,6 +20,7 @@ from prediction_export_utils import (
     export_validation_predictions_csv,
     init_validation_sample_metadata,
 )
+from feature_paths import resolve_feature_paths
 from sampling import build_resampled_series_list, print_sampling_summary
 from relation_utils import (
     build_relation_subtype_head,
@@ -149,8 +150,9 @@ with open('../process_input/split2/image_dict.pickle', 'rb') as f:
     image_dict = pickle.load(f) 
 with open('../process_input/split2/series_dict.pickle', 'rb') as f:
     series_dict = pickle.load(f)
-feature_train = np.load('../seresnext101/features0/feature_train.npy')
-feature_valid = np.load('../seresnext101/features0/feature_valid.npy')
+feature_train_path, feature_valid_path = resolve_feature_paths("seresnext101")
+feature_train = np.load(feature_train_path)
+feature_valid = np.load(feature_valid_path)
 print(feature_train.shape, feature_valid.shape, len(series_list_train), len(series_list_valid), len(image_list_train), len(image_list_valid), len(image_dict), len(series_dict))
 
 image_to_feature_train = {}
