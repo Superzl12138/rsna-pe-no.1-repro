@@ -6,6 +6,7 @@ Expected root layout example:
         APE/<case>/<study_dir>/<series_dir>/*.dcm
         CPE/<case>/<study_dir>/<series_dir>/*.dcm
         D_慢加急/<case>/<study_dir>/<series_dir>/*.dcm
+        ctpa-阴性/<case>/<study_dir>/<series_dir>/*.dcm
 
 The script scans leaf directories under the class folders, reads the first valid
 DICOM in each directory, extracts Study/Series UID, and writes one CSV row per
@@ -51,6 +52,12 @@ CLASS_TO_LABELS = {
         "acute_and_chronic_pe": 0,
     },
     "阴性": {
+        "external_case_label": "negative",
+        "negative_exam_for_pe": 1,
+        "chronic_pe": 0,
+        "acute_and_chronic_pe": 0,
+    },
+    "ctpa-阴性": {
         "external_case_label": "negative",
         "negative_exam_for_pe": 1,
         "chronic_pe": 0,
@@ -159,7 +166,7 @@ def write_csv(output_csv, records):
 
 def main():
     parser = argparse.ArgumentParser(description="Build an external labels CSV from class-organized DICOM directories.")
-    parser.add_argument("--root-dir", required=True, help="Root directory containing class folders such as APE/CPE/D_慢加急.")
+    parser.add_argument("--root-dir", required=True, help="Root directory containing class folders such as APE/CPE/D_慢加急/ctpa-阴性.")
     parser.add_argument("--output-csv", required=True, help="Output CSV path.")
     args = parser.parse_args()
 
