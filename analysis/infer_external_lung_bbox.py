@@ -79,16 +79,45 @@ class BboxCollator:
         self.series_dict = series_dict
         self.train_root = Path(train_root)
 
-    def _read_selected_dicoms(self, series_dir, selected_image_list):
-        dicoms = []
-        for image_id in selected_image_list:
-            dicom_path = series_dir / f"{image_id}.dcm"
+    def _read_single_dicom(self, dicom_path):
+        try:
             dataset = pydicom.dcmread(str(dicom_path), force=True)
             img = dataset.pixel_array.astype(np.float32)
             img = img * float(dataset.RescaleSlope) + float(dataset.RescaleIntercept)
+            return img
+        except Exception:
+            return None
+
+    def _read_selected_dicoms(self, series_dir, selected_image_list, sorted_image_list):
+        dicoms = []
+        used_image_ids = []
+        unreadable_image_ids = []
+
+        candidate_image_ids = list(selected_image_list)
+        for image_id in sorted_image_list:
+            if image_id not in candidate_image_ids:
+                candidate_image_ids.append(image_id)
+
+        for image_id in candidate_image_ids:
+            dicom_path = series_dir / f"{image_id}.dcm"
+            img = self._read_single_dicom(dicom_path)
+            if img is None:
+                unreadable_image_ids.append(image_id)
+                continue
             dicoms.append(img)
+            used_image_ids.append(image_id)
+            if len(dicoms) == 4:
+                break
+
+        if len(dicoms) == 0:
+            raise RuntimeError(f"No readable DICOM images found in {series_dir}")
+
+        while len(dicoms) < 4:
+            dicoms.append(dicoms[-1].copy())
+            used_image_ids.append(used_image_ids[-1])
+
         dicoms = np.asarray(dicoms, dtype=np.float32)
-        return window(dicoms, wl=100, ww=700)
+        return window(dicoms, wl=100, ww=700), used_image_ids, unreadable_image_ids
 
     def __call__(self, batch_idx):
         series_id = self.series_list[batch_idx[0]]
@@ -99,13 +128,17 @@ class BboxCollator:
         if len(selected_image_list) == 0:
             raise RuntimeError(f"No images found for {series_id}")
 
-        dicoms = self._read_selected_dicoms(series_dir, selected_image_list)
+        dicoms, used_image_ids, unreadable_image_ids = self._read_selected_dicoms(
+            series_dir,
+            selected_image_list,
+            sorted_image_list,
+        )
         x = np.zeros((4, 3, dicoms.shape[1], dicoms.shape[2]), dtype=np.float32)
         for i in range(4):
             x[i, 0] = dicoms[i]
             x[i, 1] = dicoms[i]
             x[i, 2] = dicoms[i]
-        return torch.from_numpy(x), selected_image_list, series_id
+        return torch.from_numpy(x), used_image_ids, series_id, unreadable_image_ids
 
 
 class EfficientNetBbox(nn.Module):
@@ -127,6 +160,8 @@ def write_summary(summary_path, rows):
     fieldnames = [
         "series_id",
         "selected_image_ids",
+        "num_unreadable_selected_or_fallback_images",
+        "unreadable_image_ids",
         "bbox_xmin",
         "bbox_ymin",
         "bbox_xmax",
@@ -185,8 +220,9 @@ def main():
 
     bbox_dict_external = {}
     summary_rows = []
+    total_unreadable_images = 0
 
-    for images, selected_image_list, series_id in tqdm(generator, total=len(generator)):
+    for images, selected_image_list, series_id, unreadable_image_ids in tqdm(generator, total=len(generator)):
         with torch.no_grad():
             images = images.to(device)
             logits = model(images)
@@ -207,12 +243,15 @@ def main():
             {
                 "series_id": series_id,
                 "selected_image_ids": "|".join(selected_image_list),
+                "num_unreadable_selected_or_fallback_images": len(unreadable_image_ids),
+                "unreadable_image_ids": "|".join(unreadable_image_ids),
                 "bbox_xmin": merged_bbox[0],
                 "bbox_ymin": merged_bbox[1],
                 "bbox_xmax": merged_bbox[2],
                 "bbox_ymax": merged_bbox[3],
             }
         )
+        total_unreadable_images += len(unreadable_image_ids)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     bbox_path = output_dir / "bbox_dict_external.pickle"
@@ -223,6 +262,7 @@ def main():
 
     print(f"Series processed: {len(series_list)}")
     print(f"bbox_dict size: {len(bbox_dict_external)}")
+    print(f"Total unreadable images skipped: {total_unreadable_images}")
     print(f"Weights path: {weights_path}")
     print(f"Output bbox pickle: {bbox_path}")
     print(f"Output summary CSV: {summary_path}")
