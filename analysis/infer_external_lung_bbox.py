@@ -19,6 +19,7 @@ import argparse
 import csv
 import os
 import pickle
+import sys
 from pathlib import Path
 
 import cv2
@@ -26,9 +27,17 @@ import numpy as np
 import pydicom
 import torch
 import torch.nn as nn
-from efficientnet_pytorch import EfficientNet
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+
+try:
+    from efficientnet_pytorch import EfficientNet
+except ModuleNotFoundError:
+    REPO_ROOT = Path(__file__).resolve().parents[1]
+    fallback_dir = REPO_ROOT / "trainval" / "lung_localization" / "split2"
+    if str(fallback_dir) not in sys.path:
+        sys.path.insert(0, str(fallback_dir))
+    from efficientnet_pytorch import EfficientNet
 
 
 def window(x, wl=50, ww=350):
